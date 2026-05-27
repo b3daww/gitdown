@@ -1,0 +1,46 @@
+name: Upload Large File
+
+on:
+  release:
+    types: [published]
+
+env:
+  BUCKET_NAME: 'your-bucket-name'  # نام بانک ابری
+  CHUNK_SIZE: '100'  # اندازه بخش به مگابایت
+
+jobs:
+  upload-large-file:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Upload Large File
+      uses: appleboy/ssh-action@0.1.3
+      env:
+        USER: ${{ secrets.SSH_USER }}
+        HOST: ${{ secrets.SSH_HOST }}
+        PORT: ${{ secrets.SSH_PORT }}
+        PASSPHRASE: ${{ secrets.SSH_PASSPHRASE }}
+        FILE_URL: ${{ github.event.release.zip_url }}  # لینک فایل زیپ شده ریلیز
+      with:
+        command: |
+          mkdir -p /tmp/large-file
+          cd /tmp/large-file
+          # استخراج لینک فایل از پارامتر
+          FILE_URL="{{ github.event.release.zip_url }}"
+          FILE_NAME=$(basename <<< $FILE_URL)
+
+          # ارسال به سرور ذخیره‌سازی ابری
+          gsutil -m cp -n -c -r -b ON "${FILE_URL}" gs://${BUCKET_NAME}/${FILE_NAME}
+
+          # ایجاد لینک عمومی در گیتهاب
+          curl -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Event: release" \
+            -d '{
+                "type": "release",
+                "payload": {
+                  "url": "'${FILE_URL}'",
+                  "html_url": "'${FILE_URL}'",
+                  "upload_url": "'${FILE_URL}'",
+                  "tarball_url": "'${FILE_URL}'"
+                }
+              }' \
+            https://api.github.com/repos/your-repo/releases/${{ github.event.release.id }}/assets
