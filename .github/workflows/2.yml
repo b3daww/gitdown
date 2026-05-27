@@ -1,0 +1,55 @@
+name: Upload External Asset to Release
+
+# این قسمت اجازه می‌دهد که Workflow را به صورت دستی اجرا کنید و ورودی‌ها (Inputs) را وارد نمایید.
+on:
+  workflow_dispatch:
+    inputs:
+      download_url:
+        description: 'The direct download URL of the file (e.g., https://example.com/file.zip)'
+        required: true
+        type: string
+      release_tag:
+        description: 'The desired tag/version for the release (e.g., v1.2.0)'
+        required: true
+        type: string
+      release_name:
+        description: 'The name of the release (e.g., Stable Build)'
+        required: true
+        type: string
+
+jobs:
+  download_and_release:
+    runs-on: ubuntu-latest
+    # در این بخش از Secretها استفاده می‌کنیم تا مطمئن شویم که دسترسی به GitHub API داریم.
+    # (به طور پیش فرض توکن محیطی وجود دارد، اما بهتر است از محیط‌های امن استفاده شود)
+    environment: 'Production' # اگر از Environments استفاده می‌کنید
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. دانلود فایل با استفاده از cURL
+      - name: Download Large File
+        id: download_step
+        run: |
+          DOWNLOAD_URL="${{ github.event.inputs.download_url }}"
+          FILE_NAME=$(basename "${{ github.event.inputs.download_url }}") # نام فایل را از لینک می‌گیرد
+          
+          echo "Starting download from: $DOWNLOAD_URL"
+          # استفاده از -L برای دنبال کردن ریدایرکت‌ها و -o برای ذخیره فایل
+          curl -L -o "$FILE_NAME" "$DOWNLOAD_URL"
+          
+          # ذخیره کردن نام فایل دانلود شده به عنوان یک output برای مراحل بعدی
+          echo "downloaded_file_name=$FILE_NAME" >> $GITHUB_OUTPUT
+
+      # 2. آپلود فایل به عنوان Asset در Release
+      - name: Create/Update Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: ${{ github.event.inputs.release_name }}
+          # این فایلی است که در مرحله قبل دانلود شده است.
+          files: ${{ steps.download_step.outputs.downloaded_file_name }}
+        env:
+          # به دلیل اینکه این Job توسط Workflow Trigger می‌شود، توکن GitHub در دسترس است.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
